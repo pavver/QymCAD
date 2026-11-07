@@ -41,10 +41,25 @@ pub fn tool_bar(ui: &mut egui::Ui, look: &mut BarLook, tool: &Described) -> Answ
     let pal = &look.scheme.pal;
     let mut did = Vec::new();
     let mut pressed = Pressed::Nothing;
-    ui.horizontal_wrapped(|ui| {
-        ui.label(egui::RichText::new(format!("{} {}", tool.head.icon, tool.head.name)).strong());
-        ui.separator();
-        did = draw_opts(ui, pal, &tool.bar);
+    // THE ROW OF THE BAR STAYS ONE ROW, and what does not fit in it is scrolled. Reported behaviour: under a language of
+    // longer words the Cancel of an extrusion lay over its "Pick contours", 1122-1237 across 1118-1256, and the press meant
+    // for the contours put the command down. The width of the ends is the one they took the frame before: a row is laid
+    // from the left, and how wide its end comes out is known once it is laid.
+    let ends_id = egui::Id::new("the width of the ends of the bar");
+    let was = ctx.data(|d| d.get_temp::<f32>(ends_id)).unwrap_or(0.0);
+    ui.horizontal(|ui| {
+        let room = (ui.available_width() - was - ui.spacing().item_spacing.x).max(0.0);
+        // a plain wheel turns vertically: without this the row answers only to Shift and the wheel
+        ui.style_mut().always_scroll_the_only_direction = true;
+        // NO SCROLL BAR: in a row 26 points tall the bar over the buttons took the press meant for them
+        let hidden = egui::scroll_area::ScrollBarVisibility::AlwaysHidden;
+        egui::ScrollArea::horizontal().id_salt("the options of the bar").max_width(room).scroll_bar_visibility(hidden).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(format!("{} {}", tool.head.icon, tool.head.name)).strong());
+                ui.separator();
+                did = draw_opts(ui, pal, &tool.bar);
+            });
+        });
         // the ends outermost, the count of what is selected beside them, as the bar always told it
         pressed = end_of_bar(ui, |ui| {
             let pressed = the_ends(pal, ui, tool.head.ends, &tool.gate);
@@ -52,6 +67,11 @@ pub fn tool_bar(ui: &mut egui::Ui, look: &mut BarLook, tool: &Described) -> Answ
                 if let Opt::Tally(words) = o {
                     ui.label(egui::RichText::new(words.as_str()).weak());
                 }
+            }
+            let laid = ui.min_rect().width();
+            if (laid - was).abs() > 0.5 {
+                ctx.data_mut(|d| d.insert_temp(ends_id, laid));
+                ctx.request_repaint();
             }
             pressed
         })
@@ -98,6 +118,43 @@ mod tests {
             });
             let said = words_laid(&ctx);
             assert!(said.iter().any(|n| n.words == checking), "frame {frame}: the corner says {said:?}, not that the values are being checked");
+        }
+    }
+
+    /// Where the words `word` are seen among the shapes of a frame: the part of them their clip leaves.
+    fn painted_at(shapes: &[egui::epaint::ClippedShape], word: &str) -> egui::Rect {
+        let run = shapes.iter().find_map(|c| match &c.shape {
+            egui::Shape::Text(t) if t.galley.text().contains(word) => Some(t.visual_bounding_rect().intersect(c.clip_rect)),
+            _ => None,
+        });
+        run.unwrap_or_else(|| panic!("{word:?} is not painted"))
+    }
+
+    /// THE OPTIONS OF A BAR TOO LONG FOR ITS ROW STOP SHORT OF ITS ENDS, and the rest of them is scrolled to.
+    #[test]
+    fn the_ends_of_a_bar_never_lie_over_its_options() {
+        let ctx = egui::Context::default();
+        let (scheme, project) = (SchemeUi::default(), Project::default());
+        let option = "An option as long as the room left before the ends of the bar";
+        let bar = vec![Opt::press(OptKey::of("long"), option.to_string())];
+        let tool = Described { head: Head { icon: "", name: "Extrude".into(), ends: Ends::ApplyCancel, after: AfterApply::Select }, bar, gate: Gate::Open, says: Vec::new(), boxed: None };
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(520.0, 300.0));
+        let input = || egui::RawInput { screen_rect: Some(screen), ..Default::default() };
+        let mut shapes = Vec::new();
+        for _ in 0..3 {
+            shapes = ctx
+                .run_ui(input(), |ui| {
+                    let mut look = BarLook { scheme: &scheme, project: &project, bar_exprs: None, canvas: egui::Rect::NOTHING };
+                    let _ = tool_bar(ui, &mut look, &tool);
+                })
+                .shapes;
+        }
+        let at = painted_at(&shapes, option);
+        for end in ["cmd-apply-enter", "cmd-cancel-esc"] {
+            let word = qymcad_i18n::tr(end);
+            let end_at = painted_at(&shapes, &word);
+            assert!(!end_at.intersects(at), "{word:?} at {end_at:?} lies over the option at {at:?}");
+            assert!(screen.contains_rect(end_at), "{word:?} at {end_at:?} stands outside the window");
         }
     }
 }
