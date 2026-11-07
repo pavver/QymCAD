@@ -35,8 +35,11 @@ fn the_properties_of_a_broken_node_say_why_in_the_red_of_the_theme() {
         let why = hand.app.project.regen_errors.get(&node).map(crate::gui::error_words::error_text).unwrap_or_else(|| panic!("setup: the rounding of no edge goes red in {theme}"));
         hand.app.chosen.sel = Sel::Feature(ti);
         // the panel of properties along the right of the window - the status line below says the same reason, and is
-        // not what is looked at here
-        let painted: Vec<PaintedWords> = hand.painted_words().into_iter().filter(|w| w.rect.min.x > 1100.0 && w.rect.max.y < 860.0).collect();
+        // not what is looked at here. Its left edge is the view's: the panel widens with its words, 1101 in English and
+        // 1083 in Ukrainian
+        let on_screen = hand.painted_words();
+        let beside_the_view = hand.app.viewing.view_rect.max.x;
+        let painted: Vec<PaintedWords> = on_screen.into_iter().filter(|w| w.rect.min.x >= beside_the_view && w.rect.max.y < 860.0).collect();
         let words = said(&painted, qymcad_ui_state::Tone::Error, &why).unwrap_or_else(|| panic!("{theme}: the properties do not say {why:?} with the error's icon"));
         assert_eq!(words.colour, hand.app.scheme.pal.error(), "{theme}: the reason is not in the theme's red");
         reds.push(words.colour);

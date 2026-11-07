@@ -51,14 +51,14 @@ mod tests {
     #[test]
     fn a_size_with_a_fraction_is_named_with_it() {
         let rows = threaded_cylinder(Cylinder { r: 1.25, h: 10.0 });
-        let named: Vec<&String> = rows.iter().filter(|t| t.contains(&crate::i18n::tr("cmd-cylinder")) || t.contains("Thread")).collect();
         let mut bad = Vec::new();
-        for want in ["Cylinder Ø2.5×10", "Thread M2.5×0.45"] {
-            if !named.iter().any(|t| t.contains(want)) {
+        // the sizes alone: they read the same in every language, and the words around them are the catalogue's
+        for want in ["Ø2.5×10", "M2.5×0.45"] {
+            if !rows.iter().any(|t| t.contains(want)) {
                 bad.push(want);
             }
         }
-        assert!(bad.is_empty(), "the tree does not show {bad:?}; it shows {named:?}");
+        assert!(bad.is_empty(), "the tree does not show {bad:?}; it shows {rows:?}");
     }
 
     /// A box mirrored across a side face of its own is named by the face, not by a plane of the origin. Reported
